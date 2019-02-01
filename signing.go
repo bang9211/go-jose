@@ -232,9 +232,16 @@ func (ctx *genericSigner) Sign(payload []byte) (*JSONWebSignature, error) {
 			// See https://github.com/square/go-jose/issues/157 for more context.
 			if ctx.embedJWK {
 				protected[headerJWK] = recipient.publicKey()
-			} else {
-				protected[headerKeyID] = recipient.publicKey().KeyID
 			}
+
+			// 2019.01.31 YTHAN REMOVED
+			//=========================
+			/*
+				else {
+					protected[headerKeyID] = recipient.publicKey().KeyID
+				}
+			*/
+			//=========================
 		}
 
 		if ctx.nonceSource != nil {

@@ -64,12 +64,22 @@ type genericEncrypter struct {
 	recipients     []recipientKeyInfo
 	keyGenerator   keyGenerator
 	extraHeaders   map[HeaderKey]interface{}
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	unprotectedHeaders map[HeaderKey]interface{}
+	//======================
 }
 
 type recipientKeyInfo struct {
 	keyID        string
 	keyAlg       KeyAlgorithm
 	keyEncrypter keyEncrypter
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	Headers map[HeaderKey]interface{}
+	//======================
 }
 
 // EncrypterOptions represents options that can be set on new encrypters.
@@ -80,11 +90,18 @@ type EncrypterOptions struct {
 	// of a JWS object. Some specifications which make use of JWS like to insert
 	// additional values here. All values must be JSON-serializable.
 	ExtraHeaders map[HeaderKey]interface{}
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	UnprotectedHeaders map[HeaderKey]interface{}
+	//======================
 }
 
-// WithHeader adds an arbitrary value to the ExtraHeaders map, initializing it
+// WithProtectedHeader adds an arbitrary value to the ExtraHeaders map, initializing it
 // if necessary. It returns itself and so can be used in a fluent style.
-func (eo *EncrypterOptions) WithHeader(k HeaderKey, v interface{}) *EncrypterOptions {
+//2019.01.31 YTHAN CHANGED NAME WithHeader => WithProtectedHeader
+//========================
+func (eo *EncrypterOptions) WithProtectedHeader(k HeaderKey, v interface{}) *EncrypterOptions {
 	if eo.ExtraHeaders == nil {
 		eo.ExtraHeaders = map[HeaderKey]interface{}{}
 	}
@@ -92,15 +109,29 @@ func (eo *EncrypterOptions) WithHeader(k HeaderKey, v interface{}) *EncrypterOpt
 	return eo
 }
 
+//========================
+
+//2019.01.31 YTHAN ADDED
+//======================
+func (eo *EncrypterOptions) WithUnprotectedHeader(k HeaderKey, v interface{}) *EncrypterOptions {
+	if eo.UnprotectedHeaders == nil {
+		eo.UnprotectedHeaders = map[HeaderKey]interface{}{}
+	}
+	eo.UnprotectedHeaders[k] = v
+	return eo
+}
+
+//======================
+
 // WithContentType adds a content type ("cty") header and returns the updated
 // EncrypterOptions.
 func (eo *EncrypterOptions) WithContentType(contentType ContentType) *EncrypterOptions {
-	return eo.WithHeader(HeaderContentType, contentType)
+	return eo.WithProtectedHeader(HeaderContentType, contentType)
 }
 
 // WithType adds a type ("typ") header and returns the updated EncrypterOptions.
 func (eo *EncrypterOptions) WithType(typ ContentType) *EncrypterOptions {
-	return eo.WithHeader(HeaderType, typ)
+	return eo.WithProtectedHeader(HeaderType, typ)
 }
 
 // Recipient represents an algorithm/key to encrypt messages to.
@@ -116,7 +147,24 @@ type Recipient struct {
 	KeyID      string
 	PBES2Count int
 	PBES2Salt  []byte
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	Headers map[HeaderKey]interface{}
+	//======================
 }
+
+//2019.01.31 YTHAN ADDED
+//======================
+func (rcpt Recipient) WithHeader(k HeaderKey, v interface{}) Recipient {
+	if rcpt.Headers == nil {
+		rcpt.Headers = map[HeaderKey]interface{}{}
+	}
+	rcpt.Headers[k] = v
+	return rcpt
+}
+
+//======================
 
 // NewEncrypter creates an appropriate encrypter based on the key type
 func NewEncrypter(enc ContentEncryption, rcpt Recipient, opts *EncrypterOptions) (Encrypter, error) {
@@ -128,6 +176,11 @@ func NewEncrypter(enc ContentEncryption, rcpt Recipient, opts *EncrypterOptions)
 	if opts != nil {
 		encrypter.compressionAlg = opts.Compression
 		encrypter.extraHeaders = opts.ExtraHeaders
+
+		//2019.01.31 YTHAN ADDED
+		//======================
+		encrypter.unprotectedHeaders = opts.UnprotectedHeaders
+		//======================
 	}
 
 	if encrypter.cipher == nil {
@@ -162,6 +215,10 @@ func NewEncrypter(enc ContentEncryption, rcpt Recipient, opts *EncrypterOptions)
 		if rcpt.KeyID != "" {
 			recipientInfo.keyID = rcpt.KeyID
 		}
+		//2019.01.31 YTHAN ADDED
+		//======================
+		recipientInfo.Headers = rcpt.Headers
+		//======================
 		encrypter.recipients = []recipientKeyInfo{recipientInfo}
 		return encrypter, nil
 	case ECDH_ES:
@@ -180,6 +237,10 @@ func NewEncrypter(enc ContentEncryption, rcpt Recipient, opts *EncrypterOptions)
 		if rcpt.KeyID != "" {
 			recipientInfo.keyID = rcpt.KeyID
 		}
+		//2019.01.31 YTHAN ADDED
+		//======================
+		recipientInfo.Headers = rcpt.Headers
+		//======================
 		encrypter.recipients = []recipientKeyInfo{recipientInfo}
 		return encrypter, nil
 	default:
@@ -238,6 +299,11 @@ func (ctx *genericEncrypter) addRecipient(recipient Recipient) (err error) {
 	if recipient.KeyID != "" {
 		recipientInfo.keyID = recipient.KeyID
 	}
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	recipientInfo.Headers = recipient.Headers
+	//======================
 
 	switch recipient.Algorithm {
 	case PBES2_HS256_A128KW, PBES2_HS384_A192KW, PBES2_HS512_A256KW:
@@ -316,6 +382,11 @@ func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JSONWe
 		return nil, err
 	}
 
+	//2019.01.31 YTHAN ADDED
+	//======================
+	obj.unprotected = &rawHeader{}
+	//======================
+
 	obj.recipients = make([]recipientInfo, len(ctx.recipients))
 
 	if len(ctx.recipients) == 0 {
@@ -335,25 +406,62 @@ func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JSONWe
 			return nil, err
 		}
 
-		err = recipient.header.set(headerAlgorithm, info.keyAlg)
-		if err != nil {
-			return nil, err
-		}
-
-		if info.keyID != "" {
-			err = recipient.header.set(headerKeyID, info.keyID)
+		//2019.01.31 YTHAN ADDED
+		//======================
+		if len(ctx.recipients) > 1 {
+			//======================
+			err = recipient.header.set(headerAlgorithm, info.keyAlg)
 			if err != nil {
 				return nil, err
 			}
+
+			if info.keyID != "" {
+				err = recipient.header.set(headerKeyID, info.keyID)
+				if err != nil {
+					return nil, err
+				}
+			}
+			//2019.01.31 YTHAN ADDED
+			//======================
 		}
+		//======================
+
+		//2019.01.31 YTHAN ADDED
+		//======================
+		//obj.recipients[0].header = info.Headers
+		for i, v := range info.Headers {
+			recipient.header.set(i, v)
+		}
+		//======================
+
 		obj.recipients[i] = recipient
 	}
 
 	if len(ctx.recipients) == 1 {
 		// Move per-recipient headers into main protected header if there's
 		// only a single recipient.
-		obj.protected.merge(obj.recipients[0].header)
-		obj.recipients[0].header = nil
+
+		//2019.01.31 YTHAN REMOVED
+		//========================
+		// obj.protected.merge(obj.recipients[0].header)
+		// obj.recipients[0].header = nil
+		//========================
+
+		//2019.01.31 YTHAN ADDED
+		//======================
+		h := &rawHeader{}
+		h.set(headerAlgorithm, ctx.recipients[0].keyAlg)
+		if err != nil {
+			return nil, err
+		}
+		if ctx.recipients[0].keyID != "" {
+			h.set(headerKeyID, ctx.recipients[0].keyID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		obj.protected.merge(h)
+		//======================
 	}
 
 	if ctx.compressionAlg != NONE {
@@ -367,6 +475,17 @@ func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JSONWe
 			return nil, err
 		}
 	}
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	for k, v := range ctx.unprotectedHeaders {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		(*obj.unprotected)[k] = makeRawMessage(b)
+	}
+	//======================
 
 	for k, v := range ctx.extraHeaders {
 		b, err := json.Marshal(v)

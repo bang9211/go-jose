@@ -50,6 +50,13 @@ type JSONWebEncryption struct {
 	recipients               []recipientInfo
 	aad, iv, ciphertext, tag []byte
 	original                 *rawJSONWebEncryption
+
+	//2019.01.31 YTHAN ADDED
+	//======================
+	Protected   Header
+	Unprotected Header
+	JustHeader  Header
+	//======================
 }
 
 // recipientInfo represents a raw JWE Per-Recipient header JSON object after parsing.
@@ -101,6 +108,14 @@ func (obj JSONWebEncryption) computeAuthData() []byte {
 	}
 
 	return output
+}
+
+func (obj JSONWebEncryption) addUnprotected() {
+
+}
+
+func (obj JSONWebEncryption) addHeader() {
+
 }
 
 // ParseEncrypted parses an encrypted message in compact or full serialization format.
@@ -159,6 +174,22 @@ func (parsed *rawJSONWebEncryption) sanitized() (*JSONWebEncryption, error) {
 		return nil, fmt.Errorf("square/go-jose: cannot sanitize merged headers: %v (%v)", err, mergedHeaders)
 	}
 
+	//2019.01.31 YTHAN ADDED
+	//======================
+	if obj.protected != nil {
+		obj.Protected, err = obj.protected.sanitized()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if obj.unprotected != nil {
+		obj.Unprotected, err = obj.unprotected.sanitized()
+		if err != nil {
+			return nil, err
+		}
+	}
+	//======================
+
 	if len(parsed.Recipients) == 0 {
 		obj.recipients = []recipientInfo{
 			{
@@ -189,6 +220,14 @@ func (parsed *rawJSONWebEncryption) sanitized() (*JSONWebEncryption, error) {
 		if headers.getAlgorithm() == "" || headers.getEncryption() == "" {
 			return nil, fmt.Errorf("square/go-jose: message is missing alg/enc headers")
 		}
+
+		//2019.01.31 YTHAN ADDED
+		//======================
+		obj.JustHeader, err = recipient.header.sanitized()
+		if err != nil {
+			return nil, err
+		}
+		//======================
 	}
 
 	obj.iv = parsed.Iv.bytes()

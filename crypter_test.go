@@ -380,7 +380,7 @@ func TestEncrypterExtraHeaderInclusion(t *testing.T) {
 	}
 	opts.WithType("JWT")
 	opts.WithContentType("JWT")
-	opts.WithHeader(HeaderKey("myCustomHeader"), "xyz")
+	opts.WithProtectedHeader(HeaderKey("myCustomHeader"), "xyz")
 	enc, err := NewEncrypter(A256GCM, Recipient{Algorithm: A256GCMKW, Key: sharedKey}, opts)
 	if err != nil {
 		fmt.Println(err)
