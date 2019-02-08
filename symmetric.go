@@ -31,7 +31,7 @@ import (
 	"io"
 
 	"golang.org/x/crypto/pbkdf2"
-	"gopkg.in/square/go-jose.v2/cipher"
+	josecipher "gopkg.in/square/go-jose.v2/cipher"
 )
 
 // Random reader (stubbed out in tests)
@@ -223,19 +223,23 @@ func (ctx aeadContentCipher) keySize() int {
 	return ctx.keyBytes
 }
 
+//2019.02.01 YTHAN ADDED IV
 // Encrypt some data
-func (ctx aeadContentCipher) encrypt(key, aad, pt []byte) (*aeadParts, error) {
+func (ctx aeadContentCipher) encrypt(key, aad, pt []byte, iv []byte) (*aeadParts, error) {
 	// Get a new AEAD instance
 	aead, err := ctx.getAead(key)
 	if err != nil {
 		return nil, err
 	}
 
+	//YTHAN CHANGED
 	// Initialize a new nonce
-	iv := make([]byte, aead.NonceSize())
-	_, err = io.ReadFull(RandReader, iv)
-	if err != nil {
-		return nil, err
+	if iv == nil {
+		iv = make([]byte, aead.NonceSize())
+		_, err = io.ReadFull(RandReader, iv)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ciphertextAndTag := aead.Seal(nil, iv, pt, aad)
@@ -263,7 +267,7 @@ func (ctx aeadContentCipher) decrypt(key, aad []byte, parts *aeadParts) ([]byte,
 }
 
 // Encrypt the content encryption key.
-func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipientInfo, error) {
+func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm, iv []byte) (recipientInfo, error) {
 	switch alg {
 	case DIRECT:
 		return recipientInfo{
@@ -272,7 +276,7 @@ func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 	case A128GCMKW, A192GCMKW, A256GCMKW:
 		aead := newAESGCM(len(ctx.key))
 
-		parts, err := aead.encrypt(ctx.key, []byte{}, cek)
+		parts, err := aead.encrypt(ctx.key, []byte{}, cek, iv)
 		if err != nil {
 			return recipientInfo{}, err
 		}

@@ -28,15 +28,15 @@ import (
 
 // Encrypter represents an encrypter which produces an encrypted JWE object.
 type Encrypter interface {
-	Encrypt(plaintext []byte) (*JSONWebEncryption, error)
-	EncryptWithAuthData(plaintext []byte, aad []byte) (*JSONWebEncryption, error)
+	Encrypt(plaintext []byte, iv []byte) (*JSONWebEncryption, error)
+	EncryptWithAuthData(plaintext []byte, aad []byte, iv []byte) (*JSONWebEncryption, error)
 	Options() EncrypterOptions
 }
 
 // A generic content cipher
 type contentCipher interface {
 	keySize() int
-	encrypt(cek []byte, aad, plaintext []byte) (*aeadParts, error)
+	encrypt(cek []byte, aad, plaintext []byte, iv []byte) (*aeadParts, error)
 	decrypt(cek []byte, aad []byte, parts *aeadParts) ([]byte, error)
 }
 
@@ -48,7 +48,7 @@ type keyGenerator interface {
 
 // A generic key encrypter
 type keyEncrypter interface {
-	encryptKey(cek []byte, alg KeyAlgorithm) (recipientInfo, error) // Encrypt a key
+	encryptKey(cek []byte, alg KeyAlgorithm, iv []byte) (recipientInfo, error) // Encrypt a key
 }
 
 // A generic key decrypter
@@ -367,12 +367,12 @@ func newDecrypter(decryptionKey interface{}) (keyDecrypter, error) {
 }
 
 // Implementation of encrypt method producing a JWE object.
-func (ctx *genericEncrypter) Encrypt(plaintext []byte) (*JSONWebEncryption, error) {
-	return ctx.EncryptWithAuthData(plaintext, nil)
+func (ctx *genericEncrypter) Encrypt(plaintext []byte, iv []byte) (*JSONWebEncryption, error) {
+	return ctx.EncryptWithAuthData(plaintext, nil, iv)
 }
 
 // Implementation of encrypt method producing a JWE object.
-func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JSONWebEncryption, error) {
+func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte, iv []byte) (*JSONWebEncryption, error) {
 	obj := &JSONWebEncryption{}
 	obj.aad = aad
 
@@ -401,7 +401,7 @@ func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JSONWe
 	obj.protected.merge(&headers)
 
 	for i, info := range ctx.recipients {
-		recipient, err := info.keyEncrypter.encryptKey(cek, info.keyAlg)
+		recipient, err := info.keyEncrypter.encryptKey(cek, info.keyAlg, iv)
 		if err != nil {
 			return nil, err
 		}
@@ -496,7 +496,7 @@ func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JSONWe
 	}
 
 	authData := obj.computeAuthData()
-	parts, err := ctx.cipher.encrypt(cek, authData, plaintext)
+	parts, err := ctx.cipher.encrypt(cek, authData, plaintext, iv)
 	if err != nil {
 		return nil, err
 	}

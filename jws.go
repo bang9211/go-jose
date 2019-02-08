@@ -301,6 +301,7 @@ func (obj JSONWebSignature) FullSerialize() string {
 			serializedProtected := mustSerializeJSON(obj.Signatures[0].protected)
 			raw.Protected = newBuffer(serializedProtected)
 		}
+
 		raw.Header = obj.Signatures[0].header
 		raw.Signature = newBuffer(obj.Signatures[0].Signature)
 	} else {

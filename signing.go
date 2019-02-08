@@ -53,7 +53,8 @@ type SignerOptions struct {
 	// Optional map of additional keys to be inserted into the protected header
 	// of a JWS object. Some specifications which make use of JWS like to insert
 	// additional values here. All values must be JSON-serializable.
-	ExtraHeaders map[HeaderKey]interface{}
+	ExtraHeaders       map[HeaderKey]interface{}
+	UnprotectedHeaders map[HeaderKey]interface{} // 2019.02.08 YTHAN ADDED
 }
 
 // WithHeader adds an arbitrary value to the ExtraHeaders map, initializing it
@@ -63,6 +64,16 @@ func (so *SignerOptions) WithHeader(k HeaderKey, v interface{}) *SignerOptions {
 		so.ExtraHeaders = map[HeaderKey]interface{}{}
 	}
 	so.ExtraHeaders[k] = v
+	return so
+}
+
+// Add Unprotected Header
+
+func (so *SignerOptions) WithUnprotectedHeader(k HeaderKey, v interface{}) *SignerOptions {
+	if so.UnprotectedHeaders == nil {
+		so.UnprotectedHeaders = map[HeaderKey]interface{}{}
+	}
+	so.UnprotectedHeaders[k] = v
 	return so
 }
 
@@ -86,10 +97,11 @@ type payloadVerifier interface {
 }
 
 type genericSigner struct {
-	recipients   []recipientSigInfo
-	nonceSource  NonceSource
-	embedJWK     bool
-	extraHeaders map[HeaderKey]interface{}
+	recipients         []recipientSigInfo
+	nonceSource        NonceSource
+	embedJWK           bool
+	extraHeaders       map[HeaderKey]interface{}
+	unprotectedHeaders map[HeaderKey]interface{}
 }
 
 type recipientSigInfo struct {
@@ -117,6 +129,7 @@ func NewMultiSigner(sigs []SigningKey, opts *SignerOptions) (Signer, error) {
 		signer.nonceSource = opts.NonceSource
 		signer.embedJWK = opts.EmbedJWK
 		signer.extraHeaders = opts.ExtraHeaders
+		signer.unprotectedHeaders = opts.UnprotectedHeaders
 	}
 
 	for _, sig := range sigs {
@@ -232,16 +245,9 @@ func (ctx *genericSigner) Sign(payload []byte) (*JSONWebSignature, error) {
 			// See https://github.com/square/go-jose/issues/157 for more context.
 			if ctx.embedJWK {
 				protected[headerJWK] = recipient.publicKey()
+			} else if recipient.publicKey().KeyID != "" {
+				protected[headerKeyID] = recipient.publicKey().KeyID
 			}
-
-			// 2019.01.31 YTHAN REMOVED
-			//=========================
-			/*
-				else {
-					protected[headerKeyID] = recipient.publicKey().KeyID
-				}
-			*/
-			//=========================
 		}
 
 		if ctx.nonceSource != nil {
@@ -275,6 +281,23 @@ func (ctx *genericSigner) Sign(payload []byte) (*JSONWebSignature, error) {
 			}
 			(*signatureInfo.protected)[k] = makeRawMessage(b)
 		}
+
+		//2019.02.08 YTHAN ADDED
+		//======================
+		unprotected := map[HeaderKey]interface{}{}
+		for k, v := range ctx.unprotectedHeaders {
+			unprotected[k] = v
+		}
+		signatureInfo.header = &rawHeader{}
+		for k, v := range unprotected {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("square/go-jose: Error marshalling item %#v: %v", k, err)
+			}
+			(*signatureInfo.header)[k] = makeRawMessage(b)
+		}
+		//======================
+
 		obj.Signatures[i] = signatureInfo
 	}
 

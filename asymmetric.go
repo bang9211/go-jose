@@ -29,7 +29,7 @@ import (
 	"math/big"
 
 	"golang.org/x/crypto/ed25519"
-	"gopkg.in/square/go-jose.v2/cipher"
+	josecipher "gopkg.in/square/go-jose.v2/cipher"
 	"gopkg.in/square/go-jose.v2/json"
 )
 
@@ -178,8 +178,8 @@ func newECDSASigner(sigAlg SignatureAlgorithm, privateKey *ecdsa.PrivateKey) (re
 }
 
 // Encrypt the given payload and update the object.
-func (ctx rsaEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm) (recipientInfo, error) {
-	encryptedKey, err := ctx.encrypt(cek, alg)
+func (ctx rsaEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm, iv []byte) (recipientInfo, error) {
+	encryptedKey, err := ctx.encrypt(cek, alg, nil)
 	if err != nil {
 		return recipientInfo{}, err
 	}
@@ -192,7 +192,7 @@ func (ctx rsaEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm) (recipi
 
 // Encrypt the given payload. Based on the key encryption algorithm,
 // this will either use RSA-PKCS1v1.5 or RSA-OAEP (with SHA-1 or SHA-256).
-func (ctx rsaEncrypterVerifier) encrypt(cek []byte, alg KeyAlgorithm) ([]byte, error) {
+func (ctx rsaEncrypterVerifier) encrypt(cek []byte, alg KeyAlgorithm, iv []byte) ([]byte, error) {
 	switch alg {
 	case RSA1_5:
 		return rsa.EncryptPKCS1v15(RandReader, ctx.publicKey, cek)
@@ -334,7 +334,7 @@ func (ctx rsaEncrypterVerifier) verifyPayload(payload []byte, signature []byte, 
 }
 
 // Encrypt the given payload and update the object.
-func (ctx ecEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm) (recipientInfo, error) {
+func (ctx ecEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm, iv []byte) (recipientInfo, error) {
 	switch alg {
 	case ECDH_ES:
 		// ECDH-ES mode doesn't wrap a key, the shared secret is used directly as the key.
