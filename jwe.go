@@ -223,9 +223,11 @@ func (parsed *rawJSONWebEncryption) sanitized() (*JSONWebEncryption, error) {
 
 		//2019.01.31 YTHAN ADDED
 		//======================
-		obj.JustHeader, err = recipient.header.sanitized()
-		if err != nil {
-			return nil, err
+		if recipient.header != nil {
+			obj.JustHeader, err = recipient.header.sanitized()
+			if err != nil {
+				return nil, err
+			}
 		}
 		//======================
 	}
